@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>QUANTUM SYNTH · CYMATIC 5D</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { width:100%; height:100%; overflow:hidden; background:#000; }
+  body { font-family: 'Courier New', monospace; color:#9fefff; user-select:none; }
+  canvas { display:block; }
+
+  #drop {
+    position:fixed; inset:0; z-index:1000;
+    display:flex; flex-direction:column; align-items:center; justify-content:center;
+    background: radial-gradient(circle at center, #0a0f1e 0%, #000 70%);
+    transition: opacity .6s; cursor:pointer; text-align:center; padding:20px;
+  }
+  #drop.hide { opacity:0; pointer-events:none; }
+  #drop h1 {
+    font-size: clamp(24px, 5vw, 48px); letter-spacing:6px; font-weight:bold;
+    background: linear-gradient(90deg, #00f0ff, #7a5cff, #ff00e0);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    text-shadow: 0 0 60px #00f0ff33;
+    margin-bottom:20px;
+  }
+  #drop p { font-size: clamp(12px, 1.6vw, 16px); opacity:.75; margin-bottom:12px; letter-spacing:2px; }
+  #drop .box {
+    margin-top:30px; border:2px dashed #00f0ff55; border-radius:20px;
+    padding: 40px 60px; font-size:14px; letter-spacing:3px;
+    background: #00f0ff08; transition: all .3s;
+  }
+  #drop .box:hover { border-color:#00f0ff; background:#00f0ff12; }
+  #drop .hint { margin-top:30px; font-size:10px; opacity:.4; letter-spacing:2px; }
+
+  #hud {
+    position:fixed; inset:0; pointer-events:none; padding:16px; z-index:10;
+    display:flex; flex-direction:column; justify-content:space-between;
+  }
+  .row { display:flex; justify-content:space-between; align-items:flex-start; }
+  .brand { font-size:18px; font-weight:bold; letter-spacing:3px; color:#00f0ff;
+           text-shadow:0 0 12px #00f0ff88; }
+  .brand span { color:#7a5cff; }
+  .stats { text-align:right; font-size:10px; line-height:1.8; opacity:.85; }
+  .stats b { color:#00ff88; }
+
+  #spectrum {
+    position:fixed; left:16px; bottom:16px; width:200px; height:60px;
+    z-index:10; opacity:.7; pointer-events:none;
+  }
+
+  #buttons {
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    display:flex; gap:10px; z-index:20; flex-wrap:wrap; justify-content:center;
+  }
+  .btn {
+    background:#0a1018ee; border:1px solid #00f0ff; color:#00f0ff;
+    padding:12px 22px; border-radius:40px; font-family:inherit;
+    font-size:12px; font-weight:bold; letter-spacing:2px; cursor:pointer;
+    backdrop-filter:blur(8px); transition:all .25s; text-transform:uppercase;
+    box-shadow:0 0 15px #00f0ff33;
+  }
+  .btn:hover { background:#00f0ff22; box-shadow:0 0 25px #00f0ff66; }
+  .btn:active { transform:scale(.95); }
+  .btn.magenta { border-color:#ff00e0; color:#ff00e0; box-shadow:0 0 15px #ff00e033; }
+  .btn.magenta:hover { background:#ff00e022; }
+  .btn.red { border-color:#ff4466; color:#ff4466; box-shadow:0 0 15px #ff446633; animation: pulse 1.2s infinite; }
+  .btn.red:hover { background:#ff446622; }
+  .btn.off { opacity:.35; pointer-events:none; }
+  @keyframes pulse {
+    0%,100% { box-shadow:0 0 15px #ff446633; }
+    50% { box-shadow:0 0 30px #ff446688; }
+  }
+
+  #toast {
+    position:fixed; top:50%; left:50%; transform:translate(-50%,-50%);
+    background:#0a1018ee; border:1px solid #00ff88; color:#00ff88;
+    padding:16px 30px; border-radius:14px; font-size:14px;
+    letter-spacing:2px; backdrop-filter:blur(10px); z-index:100;
+    opacity:0; transition:opacity .4s; pointer-events:none;
+    box-shadow:0 0 40px #00ff8855; text-align:center;
+  }
+  #toast.show { opacity:1; }
+
+  #trackname {
+    position:fixed; top:16px; left:50%; transform:translateX(-50%);
+    font-size:11px; letter-spacing:3px; opacity:.7; z-index:10;
+    pointer-events:none; text-align:center; max-width:60vw;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
+</style>
+</head>
+<body>
+
+<div id="drop">
+  <h1>QUANTUM SYNTH</h1>
+  <p>CYMATIC STUDIO · 5D QUANTUM ENGINE</p>
+  <div class="box">⬇ SUELTA UN ARCHIVO MP3 AQUÍ ⬇<br><br>O HAZ CLIC PARA ELEGIR</div>
+  <div class="hint">El audio se procesa 100% en tu navegador · nada se sube a internet</div>
+</div>
+
+<div id="hud">
+  <div class="row">
+    <div class="brand">CYMATIC<span> · 5D</span></div>
+    <div class="stats">
+      <div id="fps">-- FPS</div>
+      <div>BASS <b id="bass">0</b> · MID <b id="mid">0</b> · HIGH <b id="high">0</b></div>
+      <div>BEATS <b id="beats">0</b> · UNIVERSOS <b id="uni">8</b></div>
+      <div id="reclabel" style="color:#ff4466">● REC OFF</div>
+    </div>
+  </div>
+</div>
+
+<canvas id="spectrum"></canvas>
+
+<div id="trackname"></div>
+
+<div id="buttons">
+  <button class="btn magenta" id="btn-collapse">⚛️ COLAPSO AUTO</button>
+  <button class="btn" id="btn-camera">📷 CÁMARA AUTO</button>
+  <button class="btn red" id="btn-record">⬤ GRABAR VIDEO</button>
+  <button class="btn" id="btn-new">↺ NUEVO MP3</button>
+</div>
+
+<div id="toast"></div>
+
+<canvas id="canvas"></canvas>
+
+<input type="file" id="fileinput" accept="audio/*" style="display:none" />
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* ============================================================
+   CONFIG
+   ============================================================ */
+const IS_MOBILE = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+const CFG = {
+  N:          IS_MOBILE ? 200 : 380,
+  GHOSTS:     7,
+  LENGTH:     30,
+  PARTICLES:  IS_MOBILE ? 300 : 800,
+};
+
+/* ============================================================
+   ESCENA 3D
+   ============================================================ */
+const canvas   = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias:!IS_MOBILE, preserveDrawingBuffer:true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_MOBILE?1.5:2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.setClearColor(0x000000, 1);
+
+const scene  = new THREE.Scene();
+scene.fog    = new THREE.FogExp2(0x000000, 0.018);
+const camera = new THREE.PerspectiveCamera(60, innerWidth/innerHeight, 0.1, 500);
+
+/* Rejilla doble */
+const grid1 = new THREE.GridHelper(70, 70, 0x00ffcc, 0x0a2a2a);
+grid1.material.transparent = true; grid1.material.opacity = 0.25;
+scene.add(grid1);
+const grid2 = new THREE.GridHelper(70, 14, 0x00f0ff, 0x00f0ff);
+grid2.material.transparent = true; grid2.material.opacity = 0.08;
+grid2.position.y = 0.02;
+scene.add(grid2);
+
+/* ============================================================
+   ONDAS · 1 principal + 7 fantasma
+   ============================================================ */
+function makeLine(color, opacity) {
+  const pos = new Float32Array(CFG.N * 3);
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const m = new THREE.LineBasicMaterial({
+    color, transparent:true, opacity,
+    blending: THREE.AdditiveBlending, depthWrite:false,
+  });
+  const l = new THREE.Line(g, m);
+  scene.add(l);
+  return { geom:g, mat:m, pos };
+}
+
+const main = makeLine(0x00f0ff, 1.0);
+const GHOST_COLORS = [0xff00e0, 0x00ff88, 0xffaa00, 0x7a5cff, 0x00d0ff, 0xff4466, 0x44ffaa];
+const ghosts = [];
+for (let i=0; i<CFG.GHOSTS; i++) {
+  const g = makeLine(GHOST_COLORS[i], 0.4);
+  g.freq = 0.5 + Math.random()*1.2;
+  g.amp  = 0.8 + Math.random()*1.6;
+  g.phase= Math.random()*Math.PI*2;
+  g.dimV = Math.random()*Math.PI*2;
+  g.dimW = 0.2 + Math.random()*0.9;
+  ghosts.push(g);
+}
+
+/* Partículas */
+const pPos = new Float32Array(CFG.PARTICLES * 3);
+for (let i=0; i<CFG.PARTICLES; i++) {
+  pPos[i*3]   = (Math.random()-.5)*60;
+  pPos[i*3+1] = Math.random()*22 - 2;
+  pPos[i*3+2] = (Math.random()-.5)*60;
+}
+const pGeom = new THREE.BufferGeometry();
+pGeom.setAttribute('position', new THREE.BufferAttribute(pPos, 3));
+const particles = new THREE.Points(pGeom, new THREE.PointsMaterial({
+  color:0x00f0ff, size:0.08, transparent:true, opacity:0.55,
+  blending: THREE.AdditiveBlending, depthWrite:false,
+}));
+scene.add(particles);
+
+/* ============================================================
+   AUDIO · Web Audio API + Analyser
+   ============================================================ */
+let audioCtx=null, analyser=null, freqData=null, timeData=null;
+let audioSrc=null, audioDest=null, mediaStreamDest=null;
+let audioEl=null;
+let bass=0, mid=0, high=0, energy=0, prevEnergy=0;
+let beatFlash=0, beatCount=0, lastBeatTime=0;
+
+const spectrumCanvas = document.getElementById('spectrum');
+const specCtx = spectrumCanvas.getContext('2d');
+spectrumCanvas.width  = 200;
+spectrumCanvas.height = 60;
+
+/* ============================================================
+   ESTADO
+   ============================================================ */
+let t = 0, last = performance.now();
+let collapse = 0, collapseTarget = 0;
+let autoCollapse = true, autoCamera = true;
+let camPhase = 0;
+let fpsAcc=0, fpsCount=0;
+let recording = false;
+let recorder = null, recordedChunks = [];
+
+const cam = { theta:0, phi:1.15, radius:20, target: new THREE.Vector3(0, 2.5, 0) };
+const camGoal = { theta:0, phi:1.15, radius:20 };
+
+/* ============================================================
+   CARGA DEL MP3
+   ============================================================ */
+const dropZone  = document.getElementById('drop');
+const fileInput = document.getElementById('fileinput');
+const trackName = document.getElementById('trackname');
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => { if (e.target.files[0]) loadAudio(e.target.files[0]); });
+
+['dragover','dragenter'].forEach(ev =>
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.querySelector('.box').style.borderColor='#00f0ff'; })
+);
+['dragleave','drop'].forEach(ev =>
+  dropZone.addEventListener(ev, e => { e.preventDefault(); dropZone.querySelector('.box').style.borderColor='#00f0ff55'; })
+);
+dropZone.addEventListener('drop', e => {
+  const f = e.dataTransfer.files[0];
+  if (f && f.type.startsWith('audio/')) loadAudio(f);
+});
+
+async function loadAudio(file) {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') await audioCtx.resume();
+
+  audioEl = new Audio();
+  audioEl.src = URL.createObjectURL(file);
+  audioEl.crossOrigin = 'anonymous';
+  audioEl.loop = false;
+
+  audioSrc = audioCtx.createMediaElementSource(audioEl);
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 2048;
+  analyser.smoothingTimeConstant = 0.75;
+  freqData = new Uint8Array(analyser.frequencyBinCount);
+  timeData = new Uint8Array(analyser.fftSize);
+
+  // Cadena: source → analyser → destination (parlantes) + mediaStreamDest (para grabación)
+  audioSrc.connect(analyser);
+  audioDest = audioCtx.createMediaStreamDestination();
+  analyser.connect(audioCtx.destination);
+  analyser.connect(audioDest);
+
+  trackName.textContent = file.name.replace(/\.[^.]+$/, '').toUpperCase();
+
+  dropZone.classList.add('hide');
+  await audioEl.play();
+  showToast('🎵 REPRODUCIENDO · ' + file.name);
+}
+
+/* ============================================================
+   ANÁLISIS · Bandas + Beat Detection
+   ============================================================ */
+function analyze() {
+  if (!analyser) return;
+  analyser.getByteFrequencyData(freqData);
+  analyser.getByteTimeDomainData(timeData);
+
+  const n = freqData.length;
+  const bassEnd  = Math.floor(n * 0.08);
+  const midEnd   = Math.floor(n * 0.45);
+
+  let b=0, m=0, h=0;
+  for (let i=0; i<bassEnd; i++) b += freqData[i];
+  for (let i=bassEnd; i<midEnd; i++) m += freqData[i];
+  for (let i=midEnd; i<n; i++) h += freqData[i];
+
+  bass  += ((b/(bassEnd*255))        - bass)  * 0.30;
+  mid   += ((m/((midEnd-bassEnd)*255)) - mid)   * 0.30;
+  high  += ((h/((n-midEnd)*255))     - high)  * 0.30;
+
+  // Energía global
+  let sum=0;
+  for (let i=0; i<timeData.length; i++) {
+    const v = (timeData[i]-128)/128;
+    sum += v*v;
+  }
+  energy = Math.sqrt(sum / timeData.length);
+
+  // Beat detection por incremento de energía
+  const now = performance.now();
+  if (energy - prevEnergy > 0.08 && now - lastBeatTime > 220) {
+    beatFlash = 1;
+    beatCount++;
+    lastBeatTime = now;
+    if (autoCollapse && collapseTarget === 1) collapseTarget = 0;
+  }
+  prevEnergy = energy * 0.6 + prevEnergy * 0.4;
+
+  // UI
+  document.getElementById('bass').textContent = (bass*100).toFixed(0);
+  document.getElementById('mid').textContent  = (mid*100).toFixed(0);
+  document.getElementById('high').textContent = (high*100).toFixed(0);
+  document.getElementById('beats').textContent= beatCount;
+
+  // Espectro mini
+  specCtx.clearRect(0,0,200,60);
+  for (let i=0; i<100; i++) {
+    const v = freqData[i*2]/255;
+    const hue = 180 + i*1.5;
+    specCtx.fillStyle = `hsl(${hue}, 100%, ${30 + v*50}%)`;
+    specCtx.fillRect(i*2, 60 - v*60, 2, v*60);
+  }
+}
+
+/* ============================================================
+   PROYECCIÓN 5D → 3D
+   El audio modula la amplitud y la "5ª dimensión" (V)
+   ============================================================ */
+function mainY(x) {
+  const boost = bass * 3.5 + energy * 4;
+  return 2.5 + (1.8 + boost) * Math.sin(1.0 * x + t * 1.2) * (0.7 + high*0.6);
+}
+function mainZ(x) {
+  return 0.8 * Math.sin(0.5 * x + t * 0.7 + mid * 3) * (1 + bass*2);
+}
+
+function updateMain() {
+  const p = main.pos;
+  for (let i=0; i<CFG.N; i++) {
+    const x = (i/(CFG.N-1) - 0.5) * CFG.LENGTH;
+    p[i*3]   = x;
+    p[i*3+1] = mainY(x);
+    p[i*3+2] = mainZ(x);
+  }
+  main.geom.attributes.position.needsUpdate = true;
+}
+
+function updateGhosts() {
+  for (const g of ghosts) {
+    const p = g.pos;
+    const amBoost = 1 + mid * 2.5;
+    for (let i=0; i<CFG.N; i++) {
+      const x = (i/(CFG.N-1) - 0.5) * CFG.LENGTH;
+      const gy = 2.5 + (g.amp * amBoost) *
+        Math.sin(g.freq * x + t * (0.5 + high) + g.phase) *
+        Math.cos(g.dimW * x * 0.35 + t * 0.25);
+      const gz = 1.0 * Math.sin(g.freq * 0.6 * x + t * 0.8 + g.dimV) *
+        Math.cos(g.freq * 0.25 * x + t * 0.4);
+      p[i*3]   = x;
+      p[i*3+1] = gy + (mainY(x) - gy) * collapse;
+      p[i*3+2] = gz + (mainZ(x) - gz) * collapse;
+    }
+    g.geom.attributes.position.needsUpdate = true;
+    g.mat.opacity = (1 - collapse) * (0.35 + high * 0.4);
+  }
+}
+
+/* ============================================================
+   CÁMARA AUTOMÁTICA
+   ============================================================ */
+function updateCamera(dt) {
+  if (autoCamera && audioEl && !audioEl.paused) {
+    camPhase += dt * (0.15 + bass * 0.8);
+    camGoal.theta = camPhase;
+    camGoal.phi = 1.05 + Math.sin(camPhase * 0.5) * 0.35;
+    camGoal.radius = 18 + Math.sin(camPhase * 0.8) * 5 - bass * 3;
+  }
+  cam.theta  += (camGoal.theta  - cam.theta)  * Math.min(1, dt*2);
+  cam.phi    += (camGoal.phi    - cam.phi)    * Math.min(1, dt*2);
+  cam.radius += (camGoal.radius - cam.radius) * Math.min(1, dt*2);
+
+  const sp = Math.sin(cam.phi);
+  camera.position.set(
+    cam.radius * sp * Math.sin(cam.theta),
+    cam.radius * Math.cos(cam.phi) + 2.5,
+    cam.radius * sp * Math.cos(cam.theta)
+  );
+  camera.lookAt(cam.target);
+}
+
+/* ============================================================
+   LOOP
+   ============================================================ */
+function animate(now) {
+  requestAnimationFrame(animate);
+  const dt = Math.min(0.05, (now-last)/1000);
+  last = now;
+
+  if (audioEl && !audioEl.paused) t += dt * 1.4;
+
+  analyze();
+
+  // Flash del beat → empuja la rejilla
+  beatFlash *= 0.88;
+  grid1.position.y = -0.001 + beatFlash * 0.4;
+
+  // Transición de colapso (automática en los drops si autoCollapse está activo)
+  if (autoCollapse && bass > 0.55 && collapseTarget === 0) collapseTarget = 1;
+  collapse += (collapseTarget - collapse) * Math.min(1, dt * 2.2);
+
+  // Partículas reactivas
+  const pp = pGeom.attributes.position.array;
+  for (let i=0; i<CFG.PARTICLES; i++) {
+    pp[i*3+1] += (Math.sin(t*0.6 + i)*0.006) + high * 0.02;
+    if (pp[i*3+1] > 20) pp[i*3+1] = -2;
+  }
+  pGeom.attributes.position.needsUpdate = true;
+  particles.material.size = 0.08 + beatFlash * 0.15;
+  particles.material.opacity = 0.35 + energy * 0.8;
+
+  // Color dinámico de la onda principal
+  const hue = 180 + Math.sin(t*0.5) * 40 + high * 60;
+  main.mat.color.setHSL(hue/360, 1, 0.55);
+
+  // Universos activos
+  document.getElementById('uni').textContent = collapse > 0.5 ? '1' : String(CFG.GHOSTS+1);
+
+  // FPS
+  fpsAcc += dt; fpsCount++;
+  if (fpsAcc > 0.4) {
+    document.getElementById('fps').textContent = Math.round(fpsCount/fpsAcc) + ' FPS';
+    fpsAcc = 0; fpsCount = 0;
+  }
+
+  updateMain();
+  updateGhosts();
+  updateCamera(dt);
+  renderer.render(scene, camera);
+}
+
+/* ============================================================
+   GRABACIÓN DE VIDEO (canvas + audio → WebM)
+   ============================================================ */
+const btnRecord = document.getElementById('btn-record');
+const recLabel  = document.getElementById('reclabel');
+
+function pickMime() {
+  const list = ['video/webm;codecs=vp9,opus','video/webm;codecs=vp8,opus','video/webm'];
+  for (const m of list) if (MediaRecorder.isTypeSupported(m)) return m;
+  return '';
+}
+
+btnRecord.addEventListener('click', () => {
+  if (!audioEl || !audioDest) { showToast('⚠️ PRIMERO CARGA UN MP3'); return; }
+  if (!recording) startRecording();
+  else stopRecording();
+});
+
+function startRecording() {
+  recordedChunks = [];
+  const canvasStream = canvas.captureStream(60);
+  const audioTracks  = audioDest.stream.getAudioTracks();
+  const combined = new MediaStream([...canvasStream.getVideoTracks(), ...audioTracks]);
+
+  const mime = pickMime();
+  recorder = new MediaRecorder(combined, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+  recorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
+  recorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: mime });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url;
+    a.download = `quantum-synth-${Date.now()}.webm`;
+    a.click();
+    recording = false;
+    recLabel.textContent = '● REC OFF';
+    recLabel.style.color = '#ff4466';
+    btnRecord.textContent = '⬤ GRABAR VIDEO';
+    showToast('💾 VIDEO DESCARGADO');
+  };
+
+  recorder.start(1000);
+  recording = true;
+  recLabel.textContent = '● REC ON';
+  recLabel.style.color = '#00ff88';
+  btnRecord.textContent = '⏹ DETENER';
+  showToast('⬤ GRABANDO · TOCA OTRA VEZ PARA DETENER');
+}
+
+function stopRecording() {
+  if (recorder && recorder.state !== 'inactive') recorder.stop();
+}
+
+/* ============================================================
+   BOTONES
+   ============================================================ */
+const btnCollapse = document.getElementById('btn-collapse');
+btnCollapse.addEventListener('click', () => {
+  autoCollapse = !autoCollapse;
+  if (!autoCollapse) { collapseTarget = 0; btnCollapse.classList.add('off'); }
+  else btnCollapse.classList.remove('off');
+  showToast(autoCollapse ? '⚛️ COLAPSO AUTO: ON' : '⚛️ COLAPSO AUTO: OFF (manual con ESPACIO)');
+});
+
+document.getElementById('btn-camera').addEventListener('click', () => {
+  autoCamera = !autoCamera;
+  showToast(autoCamera ? '📷 CÁMARA AUTO: ON' : '📷 CÁMARA AUTO: OFF (arrastra con el ratón)');
+});
+
+document.getElementById('btn-new').addEventListener('click', () => {
+  if (audioEl) { audioEl.pause(); audioEl.currentTime = 0; }
+  dropZone.classList.remove('hide');
+  trackName.textContent = '';
+});
+
+/* ============================================================
+   TECLADO + RATÓN
+   ============================================================ */
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); collapseTarget = collapseTarget>0.5?0:1; }
+  if (e.key.toLowerCase() === 'r') btnRecord.click();
+  if (e.key.toLowerCase() === 'c') document.getElementById('btn-camera').click();
+});
+
+let dragging=false, lx=0, ly=0;
+function onDown(x,y){ dragging=true; lx=x; ly=y; autoCamera=false; }
+function onMove(x,y){
+  if(!dragging) return;
+  camGoal.theta -= (x-lx)*0.005;
+  camGoal.phi   = Math.max(0.1, Math.min(1.55, camGoal.phi - (y-ly)*0.005));
+  lx=x; ly=y;
+}
+function onUp(){ dragging=false; }
+canvas.addEventListener('mousedown', e=>onDown(e.clientX,e.clientY));
+addEventListener('mousemove', e=>onMove(e.clientX,e.clientY));
+addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', e=>{const t=e.touches[0];onDown(t.clientX,t.clientY);},{passive:true});
+canvas.addEventListener('touchmove', e=>{const t=e.touches[0];onMove(t.clientX,t.clientY);e.preventDefault();},{passive:false});
+addEventListener('touchend', onUp);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+
+/* ============================================================
+   UI TOAST
+   ============================================================ */
+let toastTimer;
+function showToast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.classList.add('show');
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => el.classList.remove('show'), 2600);
+}
+
+/* ============================================================
+   ARRANQUE
+   ============================================================ */
+requestAnimationFrame(animate);
+
+console.log('%c╔══════════════════════════════════════╗','color:#00f0ff;font-weight:bold');
+console.log('%c║  QUANTUM SYNTH · CYMATIC 5D          ║','color:#00f0ff;font-weight:bold');
+console.log('%c║  Suelta un MP3 y mira la magia       ║','color:#7a5cff;font-weight:bold');
+console.log('%c║  KRONOS Protocol · v24               ║','color:#00ff88;font-weight:bold');
+console.log('%c╚══════════════════════════════════════╝','color:#00f0ff;font-weight:bold');
+console.log('🎵 Arrastra un MP3 para empezar');
+console.log('📷 Tecla R → grabar · C → cámara auto · Espacio → colapso');
+</script>
+</body>
+</html>
